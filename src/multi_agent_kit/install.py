@@ -6,7 +6,11 @@ import re
 import shutil
 import stat
 from importlib import resources as importlib_resources
-from importlib.abc import Traversable
+
+try:  # Python 3.14 removed Traversable from importlib.abc
+    from importlib.resources.abc import Traversable
+except ImportError:  # Fallback for Python <3.9 where resources.abc is absent
+    from importlib.abc import Traversable  # type: ignore[attr-defined]
 from pathlib import Path
 from typing import Iterator
 from importlib.metadata import PackageNotFoundError, version as get_package_version
