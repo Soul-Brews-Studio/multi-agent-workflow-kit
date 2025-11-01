@@ -31,5 +31,7 @@ jobs:
           tmpdir=$(mktemp -d)
           pushd "$tmpdir" >/dev/null
           git init -q
+          git config user.email ci@example.com
+          git config user.name "CI Runner"
           uvx --python ${{ matrix.python-version }} --no-cache --from "$GITHUB_WORKSPACE" multi-agent-kit init
           popd >/dev/null
