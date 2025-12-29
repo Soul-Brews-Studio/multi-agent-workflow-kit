@@ -1,6 +1,20 @@
 # shellcheck shell=bash
 
-repo_root="${MAW_REPO_ROOT:-$PWD}"
+# Auto-detect repo root from this file's location (works from any worktree)
+# Supports both bash (BASH_SOURCE) and zsh (%x)
+if [[ -n "$MAW_REPO_ROOT" ]]; then
+  repo_root="$MAW_REPO_ROOT"
+else
+  # Get this script's path - works in both bash and zsh
+  __maw_self="${BASH_SOURCE[0]:-${(%):-%x}}"
+  if [[ -n "$__maw_self" && -f "$__maw_self" ]]; then
+    # This file is at .agents/maw.env.sh, so parent of parent = repo root
+    repo_root="$(cd "$(dirname "$__maw_self")/.." && pwd)"
+  else
+    repo_root="$PWD"
+  fi
+  unset __maw_self
+fi
 toolkit_dir="$repo_root/.agents"
 legacy_scripts_dir="$toolkit_dir/scripts"
 
@@ -51,6 +65,15 @@ Commands:
   warp <target>      Navigate to agent worktree or root (e.g., warp 1, warp root)
   hey <agent> <msg>  Send a message to a specific agent (e.g., hey 1 analyse repo)
   zoom <agent>       Toggle zoom (maximize/restore) for a specific agent pane
+  sync               Smart sync all agent worktrees from main (respects boundaries)
+  merge <N|all>      Safely merge agent commits INTO main (fetch origin first)
+  log <type> <msg>   Write to per-agent log (types: activity, debug, completions, errors)
+  peek [agent]       Check what agents are doing (read-only status + focus)
+  wait [agents...]   Wait for agents to commit (1s polling, not 30s)
+  checkpoint         Save starting points before dispatch (for review gate)
+  review             Show diffs since checkpoint, approve/reject changes
+  watch [interval]   Poll agents until all done (default: 2s)
+  reset <N>          Reject agent N work → reset to checkpoint
   direnv             Run 'direnv allow' in repo root and all agent worktrees
   catlab             Download CLAUDE.md guidelines from catlab gist
   version            Show toolkit version information
@@ -95,7 +118,23 @@ __maw_exec() {
 }
 
 __maw_warp() {
-  local target=$1
+  local print_mode=0
+  local target=""
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --print)
+        print_mode=1
+        shift
+        ;;
+      *)
+        target="$1"
+        shift
+        ;;
+    esac
+  done
+
   if [[ -z "$target" ]]; then
     echo "Usage: maw warp <target>" >&2
     echo "  target: agent name (e.g., 1-agent, 2-agent) or 'root'" >&2
@@ -103,15 +142,14 @@ __maw_warp() {
   fi
 
   local agents_dir="$repo_root/agents"
+  local destination=""
 
   if [[ "$target" == "root" ]]; then
-    cd "$repo_root" || return 1
-    echo "📍 Warped to: $repo_root"
+    destination="$repo_root"
   else
     local target_dir="$agents_dir/$target"
     if [[ -d "$target_dir" ]]; then
-      cd "$target_dir" || return 1
-      echo "📍 Warped to: $target_dir"
+      destination="$target_dir"
     else
       echo "Error: Agent worktree not found: $target_dir" >&2
       echo "Available agents:" >&2
@@ -120,6 +158,14 @@ __maw_warp() {
       fi
       return 1
     fi
+  fi
+
+  # Either print the path or cd to it
+  if [[ $print_mode -eq 1 ]]; then
+    echo "$destination"
+  else
+    cd "$destination" || return 1
+    echo "📍 Warped to: $destination" >&2
   fi
 }
 
@@ -168,6 +214,33 @@ maw() {
       ;;
     zoom)
       __maw_exec zoom.sh "$@"
+      ;;
+    sync)
+      __maw_exec smart-sync.sh "$@"
+      ;;
+    merge)
+      __maw_exec merge.sh "$@"
+      ;;
+    log)
+      __maw_exec agent-log.sh "$@"
+      ;;
+    peek)
+      __maw_exec peek.sh "$@"
+      ;;
+    wait)
+      __maw_exec wait.sh "$@"
+      ;;
+    checkpoint)
+      __maw_exec checkpoint.sh "$@"
+      ;;
+    review)
+      __maw_exec review.sh "$@"
+      ;;
+    watch)
+      __maw_exec watch.sh "$@"
+      ;;
+    reset)
+      __maw_exec reset.sh "$@"
       ;;
     direnv)
       __maw_exec direnv-allow.sh "$@"
